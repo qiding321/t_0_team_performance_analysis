@@ -5,13 +5,11 @@ Created on 2016/10/11 10:43
 @author: qiding
 """
 
-import pandas as pd
-import datetime
-
-from intraday_team_data_load import *
-from intraday_market_data_load import *
-from my_path import *
 from multiprocessing import Pool
+
+from intraday_market_data_load import *
+from intraday_team_data_load import *
+from my_path import *
 
 
 def main():
@@ -23,7 +21,7 @@ def main():
     date_list = []
     intraday_characteristics_list = []
 
-    pool_num = 5
+    pool_num = 26
     pool = Pool(pool_num)
 
     result = []
@@ -62,9 +60,12 @@ def one_stock_month_func(date_last_month, stock):
     for date_one_day in date_list_last_month:
         data_this_day = get_raw_data(stock, date_one_day)
         data_this_month.append(data_this_day)
-    data_this_stock_date = pd.concat(data_this_month, axis=0)
+    data_this_stock_date = pd.DataFrame(pd.concat(data_this_month, axis=0))
+    signal = '{}, {}, {}, data loading end, data length: {}'.format(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), stock, date_last_month, len(data_this_stock_date.index))
+    print(signal)
 
     characteristics_this_stock_date_dict = get_characteristics(data_this_stock_date)
+    print(characteristics_this_stock_date_dict)
     # signal = '{}, {}/{} completed, {}, {}'\
     #     .format(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), num, len(stock_month_list), stock, month)
     signal = '{}, {}, {}, completed'.format(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), stock, date_last_month)

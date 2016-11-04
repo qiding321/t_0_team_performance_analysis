@@ -7,12 +7,17 @@ Created on 2016/10/11 10:43
 
 from multiprocessing import Pool
 
+from WaveWrapper import wave_wrapper
 from intraday_market_data_load import *
 from intraday_team_data_load import *
 from my_path import *
 
 
 def main():
+
+    multiprocessing_flag = False
+    description = 'wave'
+    wave_flag = True
 
     intraday_team_return_data = get_intraday_team_return_data()
     stock_month_list = get_stock_month_list(intraday_team_return_data)
@@ -21,8 +26,11 @@ def main():
     date_list = []
     intraday_characteristics_list = []
 
-    pool_num = 26
-    pool = Pool(pool_num)
+    if multiprocessing_flag:
+        pool_num = 26
+        pool = Pool(pool_num)
+    else:
+        pool = None
 
     result = []
     for num, (stock, month) in enumerate(stock_month_list):
@@ -30,17 +38,18 @@ def main():
         stock_list.append(stock)
         date_list.append(date_last_month)
 
-        result.append(pool.apply_async(one_stock_month_func, (date_last_month, stock,)))
+        if multiprocessing_flag:
+            result.append(pool.apply_async(one_stock_month_func, (date_last_month, stock, wave_flag, )))
+        else:
+            characteristics_this_stock_date_dict = one_stock_month_func(date_last_month, stock, wave_flag=wave_flag)
+            intraday_characteristics_list.append(characteristics_this_stock_date_dict)
 
-        # characteristics_this_stock_date_dict = one_stock_month_func(date_last_month, stock)
+    if multiprocessing_flag:
+        pool.close()
+        pool.join()
 
-        # intraday_characteristics_list.append(characteristics_this_stock_date_dict)
-
-    pool.close()
-    pool.join()
-
-    for res in result:
-        intraday_characteristics_list.append(res.get())
+        for res in result:
+            intraday_characteristics_list.append(res.get())
 
     data_new = pd.DataFrame(intraday_characteristics_list, index=list(zip(stock_list, date_list))).reset_index()
     data_new['coid'] = data_new['index'].apply(lambda x: x[0])
@@ -49,25 +58,33 @@ def main():
 
     data_merged = pd.merge(intraday_team_return_data, data_new, on=['coid', 'date'], how='outer')
     data_merged.to_csv(output_path + 'intraday_characteristics.csv', index=None)
-    print(output_path + 'intraday_characteristics.csv' + ' done')
+    print(output_path + 'intraday_characteristics'+description+'.csv' + ' done')
 
 
-def one_stock_month_func(date_last_month, stock):
+def one_stock_month_func(date_last_month, stock, wave_flag=False):
     signal = '{}, {}, {}, begin'.format(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), stock, date_last_month)
     print(signal)
     date_list_last_month = [date_last_month + '-' + str(date).zfill(2) for date in range(1, 32)]
     data_this_month = []
     for date_one_day in date_list_last_month:
-        data_this_day = get_raw_data(stock, date_one_day)
+        data_this_day = get_raw_data(stock, date_one_day, wave_flag=wave_flag)
         data_this_month.append(data_this_day)
-    data_this_stock_date = pd.DataFrame(pd.concat(data_this_month, axis=0))
-    signal = '{}, {}, {}, data loading end, data length: {}'.format(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), stock, date_last_month, len(data_this_stock_date.index))
-    print(signal)
+    if wave_flag:
+        characteristics_this_stock_date_dict = wave_wrapper.get_characteristics_wave(data_this_month)
+    else:
+        data_this_stock_date = pd.DataFrame(pd.concat(data_this_month, axis=0))
+        signal = '{}, {}, {}, data loading end, data length: {}'.format(
+            datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            stock,
+            date_last_month,
+            len(data_this_stock_date.index)
+        )
+        print(signal)
 
-    characteristics_this_stock_date_dict = get_characteristics(data_this_stock_date)
-    print(characteristics_this_stock_date_dict)
-    # signal = '{}, {}/{} completed, {}, {}'\
-    #     .format(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), num, len(stock_month_list), stock, month)
+        characteristics_this_stock_date_dict = get_characteristics(data_this_stock_date)
+        print(characteristics_this_stock_date_dict)
+        # signal = '{}, {}/{} completed, {}, {}'\
+        #     .format(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), num, len(stock_month_list), stock, month)
     signal = '{}, {}, {}, completed'.format(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), stock, date_last_month)
     print(signal)
     return characteristics_this_stock_date_dict

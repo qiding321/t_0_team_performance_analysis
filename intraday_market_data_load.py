@@ -17,7 +17,7 @@ import const
 import util
 
 
-def get_raw_data(stock, date):
+def get_raw_data(stock, date, wave_flag=False):
     if stock[0] == '6':
         market_this_stk = 'SH'
     else:
@@ -27,20 +27,35 @@ def get_raw_data(stock, date):
 
     try:
         stk_data = pd.read_csv(tick_file_path, parse_dates=['time'], date_parser=lambda x: datetime.datetime.strptime(str(x), '%H%M%S%f'), encoding='gbk').drop_duplicates('time', keep='last').set_index('time')
-        transaction_data = pd.read_csv(tran_file_path, parse_dates=['time'], date_parser=lambda x: datetime.datetime.strptime(str(x), '%H%M%S%f'), encoding='gbk').set_index('time')
+        if not wave_flag:
+            transaction_data = pd.read_csv(tran_file_path, parse_dates=['time'], date_parser=lambda x: datetime.datetime.strptime(str(x), '%H%M%S%f'), encoding='gbk').set_index('time')
+        else:
+            transaction_data = None
     except OSError:
         return pd.DataFrame()
 
-    stk_data_resample = clean_data_stk(stk_data)
-    transaction_data_resample = clean_data_transaction(transaction_data)
+    if wave_flag:
+        stk_data2 = filter_time(stk_data)
+        func_dict = resample_dicts.stk_func_dict
+        cols = list(set(stk_data2.columns).intersection(set(func_dict.keys())))
+        stk_data3 = stk_data2[cols]
+        data_merged_fill_na = fill_na(stk_data3)
+        data_merged_drop_limit = drop_limit(data_merged_fill_na)
+        px_mid = (data_merged_drop_limit['bid1'] + data_merged_drop_limit['ask1']) / 2
+        data_merged_drop_limit.loc[:, 'mid_px'] = px_mid
+        return data_merged_drop_limit
 
-    data_merged = pd.DataFrame(pd.concat([
-        stk_data_resample,
-        transaction_data_resample,
-    ], axis=1))
-    data_merged_fill_na = fill_na(data_merged)
-    data_merged_drop_limit = drop_limit(data_merged_fill_na)
-    return data_merged_drop_limit
+    else:
+        stk_data_resample = clean_data_stk(stk_data)
+        transaction_data_resample = clean_data_transaction(transaction_data)
+
+        data_merged = pd.DataFrame(pd.concat([
+            stk_data_resample,
+            transaction_data_resample,
+        ], axis=1))
+        data_merged_fill_na = fill_na(data_merged)
+        data_merged_drop_limit = drop_limit(data_merged_fill_na)
+        return data_merged_drop_limit
 
 
 def get_characteristics(data_df):
